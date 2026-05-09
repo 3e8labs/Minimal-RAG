@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "chunk.h"
+#include "embed.h"
+
 static void usage(const char *prog) {
     fprintf(stderr, "Usage: %s --model <path.gtemodel> --file <doc.txt>\n", prog);
 }
@@ -26,8 +29,7 @@ static char *read_entire_file(const char *path, long *len) {
 int main(int argc, char **argv) {
     const char *model_path = NULL;
     const char *file_path = NULL;
-
-    for (int i = 1; i < argc; i++) {
+for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--model") && i + 1 < argc) model_path = argv[++i];
         else if (!strcmp(argv[i], "--file") && i + 1 < argc) file_path = argv[++i];
         else { usage(argv[0]); return 1; }
@@ -42,7 +44,44 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("model: %s\nfile:  %s\nbytes: %ld\n", model_path, file_path, file_len);
+    int num_chunks = 0;
+    char **chunks = chunk_text(text, 1000, 200, &num_chunks);
+    if (!chunks) {
+        fprintf(stderr, "error: chunk_text failed\n");
+        free(text);
+        return 1;
+    }
+
+    embed_ctx *ectx = embed_load(model_path);
+    if (!ectx) {
+        fprintf(stderr, "error: embed_load failed (model: %s)\n", model_path);
+        chunk_free(chunks, num_chunks);
+        free(text);
+        return 1;
+    }
+
+    float *emb = embed_batch(ectx, (const char **)chunks, num_chunks);
+    if (!emb) {
+        fprintf(stderr, "error: embed_batch failed\n");
+        embed_free(ectx);
+        chunk_free(chunks, num_chunks);
+        free(text);
+        return 1;
+    }
+
+    int dim = embed_dim(ectx);
+    printf("model:  %s\nfile:   %s\nbytes:  %ld\n", model_path, file_path, file_len);
+    printf("chunks: %d\ndim:    %d\n", num_chunks, dim);
+    if (num_chunks > 0 && dim > 0) {
+        int nprint = dim < 5 ? dim : 5;
+        printf("emb[0][0..%d):", nprint);
+        for (int i = 0; i < nprint; i++) printf(" %.6f", emb[i]);
+        printf("\n");
+    }
+
+    free(emb);
+    embed_free(ectx);
+    chunk_free(chunks, num_chunks);
     free(text);
     return 0;
 }
