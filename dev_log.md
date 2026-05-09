@@ -19,3 +19,8 @@
 - Later should implement from file?
 - Decided to not make chunks out of user query.
 - 
+
+- Finished Retireval for Version 1. Which includes public api to write the store to a binary file
+  Among other things. (Top_k query , write, free)
+- [TO-DO] Should wire this API to main.c
+
