@@ -6,7 +6,7 @@
 #include "embed.h"
 
 static void usage(const char *prog) {
-    fprintf(stderr, "Usage: %s --model <path.gtemodel> --file <doc.txt>\n", prog);
+    fprintf(stderr, "Usage: %s --model <path.gtemodel> --file <doc.txt> [--query <text>] [--k <int>]\n", prog);
 }
 
 static char *read_entire_file(const char *path, long *len) {
@@ -29,13 +29,20 @@ static char *read_entire_file(const char *path, long *len) {
 int main(int argc, char **argv) {
     const char *model_path = NULL;
     const char *file_path = NULL;
-for (int i = 1; i < argc; i++) {
+
+    const char *query = NULL;
+    int k = 3;
+
+    for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--model") && i + 1 < argc) model_path = argv[++i];
         else if (!strcmp(argv[i], "--file") && i + 1 < argc) file_path = argv[++i];
+        else if (!strcmp(argv[i], "--query") && i + 1 < argc) query = argv[++i];
+        else if (!strcmp(argv[i], "--k") && i + 1 < argc) k = atoi(argv[++i]);
         else { usage(argv[0]); return 1; }
     }
 
     if (!model_path || !file_path) { usage(argv[0]); return 1; }
+    if (k <= 0) { fprintf(stderr, "error: --k must be > 0\n"); return 1; }
 
     long file_len = 0;
     char *text = read_entire_file(file_path, &file_len);
@@ -72,10 +79,25 @@ for (int i = 1; i < argc; i++) {
     int dim = embed_dim(ectx);
     printf("model:  %s\nfile:   %s\nbytes:  %ld\n", model_path, file_path, file_len);
     printf("chunks: %d\ndim:    %d\n", num_chunks, dim);
+    if (query) {
+        printf("query:  %s\nk:      %d\n", query, k);
+        printf("note: query retrieval not implemented yet (next step)\n");
+    }
     if (num_chunks > 0 && dim > 0) {
         int nprint = dim < 5 ? dim : 5;
         printf("emb[0][0..%d):", nprint);
-        for (int i = 0; i < nprint; i++) printf(" %.6f", emb[i]);
+        for (int i = 0; i < nprint; i++) {
+          printf(" %.6f", emb[i]);
+        }
+        printf("\n");
+    }
+
+    if (num_chunks > 1 && dim > 0) {
+        int nprint = dim < 5 ? dim : 5;
+        printf("emb[1][0..%d):", nprint);
+        for (int i = 0; i < nprint; i++) {
+          printf(" %.6f", emb[dim + i]);
+        }
         printf("\n");
     }
 
