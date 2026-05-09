@@ -81,7 +81,6 @@ int main(int argc, char **argv) {
     printf("chunks: %d\ndim:    %d\n", num_chunks, dim);
     if (query) {
         printf("query:  %s\nk:      %d\n", query, k);
-        printf("note: query retrieval not implemented yet (next step)\n");
     }
     if (num_chunks > 0 && dim > 0) {
         int nprint = dim < 5 ? dim : 5;
@@ -99,6 +98,64 @@ int main(int argc, char **argv) {
           printf(" %.6f", emb[dim + i]);
         }
         printf("\n");
+    }
+
+    if (query && num_chunks > 0 && dim > 0) {
+        const char *qtexts[1] = { query };
+        float *qemb = embed_batch(ectx, qtexts, 1);
+        if (!qemb) {
+            fprintf(stderr, "error: embed_batch failed for query\n");
+            free(emb);
+            embed_free(ectx);
+            chunk_free(chunks, num_chunks);
+            free(text);
+            return 1;
+        }
+
+        int kk = k;
+        if (kk > num_chunks) kk = num_chunks;
+        int *best_idx = calloc((size_t)kk, sizeof(int));
+        float *best_score = malloc((size_t)kk * sizeof(float));
+        if (!best_idx || !best_score) {
+            fprintf(stderr, "error: out of memory\n");
+            free(best_idx);
+            free(best_score);
+            free(qemb);
+            free(emb);
+            embed_free(ectx);
+            chunk_free(chunks, num_chunks);
+            free(text);
+            return 1;
+        }
+        for (int i = 0; i < kk; i++) { best_idx[i] = -1; best_score[i] = -2.0f; }
+
+        for (int c = 0; c < num_chunks; c++) {
+            const float *ce = &emb[c * dim];
+            float dot = 0.0f;
+            for (int j = 0; j < dim; j++) dot += qemb[j] * ce[j];
+            for (int r = 0; r < kk; r++) {
+                if (dot > best_score[r]) {
+                    for (int s = kk - 1; s > r; s--) {
+                        best_score[s] = best_score[s - 1];
+                        best_idx[s] = best_idx[s - 1];
+                    }
+                    best_score[r] = dot;
+                    best_idx[r] = c;
+                    break;
+                }
+            }
+        }
+
+        printf("\nTop %d matches:\n", kk);
+        for (int r = 0; r < kk; r++) {
+            if (best_idx[r] < 0) continue;
+            printf("%d) score=%.4f chunk=%d\n%s\n\n",
+                   r + 1, best_score[r], best_idx[r], chunks[best_idx[r]]);
+        }
+
+        free(best_idx);
+        free(best_score);
+        free(qemb);
     }
 
     free(emb);
