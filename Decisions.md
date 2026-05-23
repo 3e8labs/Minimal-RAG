@@ -216,6 +216,26 @@ but TinyLlama was already chosen for its smaller size.
 
 ---
 
+## llm.c input: plain string, not store struct
+
+`llm.c` takes a pre-built `const char *context` string rather than
+`store_v1_hit *` (the retrieval result struct).
+
+**Why:** If `llm.c` took `store_v1_hit *` directly, it would depend on
+`store_v1.h` — meaning it knows about and is coupled to the Version 1
+store format. When Version 2, 3, or 4 introduce different hit structs,
+`llm.c` would need to change every time.
+
+By taking a plain string, `llm.c` knows nothing about how retrieval
+works. The caller (main.c) is responsible for building the context string
+from whatever hits the store returns. This keeps `llm.c` identical across
+all four versions.
+
+This is **separation of concerns** — each module does one thing and does
+not know about the internals of other modules.
+
+---
+
 ## Platform: Apple M1
 
 All decisions assume M1 Mac:

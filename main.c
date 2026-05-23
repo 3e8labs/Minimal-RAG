@@ -30,7 +30,7 @@ static int parse_args(args *a, int argc, char **argv) {
     a->model_path = NULL;
     a->file_path = NULL;
     a->query = NULL;
-    a->k = 3;
+    a->k = 3; // Default k value set to 3
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--model") && i + 1 < argc) a->model_path = argv[++i];
@@ -55,13 +55,17 @@ static char *read_entire_file(const char *path, long *len) {
     FILE *fp = fopen(path, "rb");
     if (!fp) return NULL;
     if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return NULL; }
-    long n = ftell(fp);
+    // Fseek to the END.
+    long n = ftell(fp); 
+    // n will be set to the length of the file in bytes.
     if (n < 0) { fclose(fp); return NULL; }
     if (fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return NULL; }
+    // Setting back the file pointer to the START of the file
 
     char *buf = malloc((size_t)n + 1);
     if (!buf) { fclose(fp); return NULL; }
     if (fread(buf, 1, (size_t)n, fp) != (size_t)n) { fclose(fp); free(buf); return NULL; }
+    // Reading the size of 1 char of n blocks from the SEEK_SET fp and saving to buf
     fclose(fp);
     buf[n] = '\0';
     if (len) *len = n;
@@ -69,6 +73,8 @@ static char *read_entire_file(const char *path, long *len) {
 }
 
 /* Since GTE embeddings are L2-normalized, dot product == cosine similarity. */
+// Normalised means they are divided by magnitude of the vectors.
+// n is the dims. Which means it is the no.of dimensions in a embedding.
 static float dot_product(const float *a, const float *b, int n) {
     float dot = 0.0f;
     for (int i = 0; i < n; i++) dot += a[i] * b[i];
@@ -210,6 +216,8 @@ int main(int argc, char **argv) {
     }
 
     int nprint = dim < 5 ? dim : 5;
+    printf("The Embeddings as follows\n");
+    printf("--------------------------\n");
     if (num_chunks > 0) print_embedding_preview(emb, 0, dim, nprint);
     if (num_chunks > 1) print_embedding_preview(emb, 1, dim, nprint);
 

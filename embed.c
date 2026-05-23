@@ -7,6 +7,7 @@
 struct embed_ctx {
     gte_ctx *gte;
 };
+// Wrapper around gte.
 
 embed_ctx *embed_load(const char *model_path) {
     if (!model_path) return NULL;

@@ -20,6 +20,8 @@ char **chunk_text(const char *text, int chunk_size, int overlap, int *num_chunks
 
     int text_len = strlen(text);
     int step = chunk_size - overlap;
+    // step is just an internal metric used by memcpy, which basically represents the start of next chunk
+    // It is a just a convenience variable.
     int count = (text_len - overlap) / step + 1;
 
     /* Allocate array of chunk pointers */
@@ -30,7 +32,7 @@ char **chunk_text(const char *text, int chunk_size, int overlap, int *num_chunks
     }
 
     for (int i = 0; i < count; i++) {
-        int start = i * step;
+        int start = i * step; // Represents the start of the chunk
         int len = chunk_size;
         if (start + len > text_len) len = text_len - start;
 

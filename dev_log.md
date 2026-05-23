@@ -2,11 +2,13 @@
 
 
 
+- The "Versions" is in respect to the backend - which is storing the emebeddings somewhere.
 
 ## Version 1 — Flat Binary File
 
 **Storage:** Custom flat binary file on disk
 **Retrieval:** Brute-force linear scan with cosine similarity
+-- Generation from the LLM is still left.
 
 ### LOG
 
