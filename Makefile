@@ -2,7 +2,7 @@ CC = cc
 CFLAGS = -O3 -march=native -ffast-math -Wall -I third_party/gte
 LDFLAGS = -lm -lcurl
 
-SOURCES = main.c chunk.c embed.c store_v1.c third_party/gte/gte.c
+SOURCES = main.c chunk.c embed.c store_v1.c llm.c third_party/gte/gte.c
 OBJECTS = $(SOURCES:.c=.o)
 TARGET = rag
 
