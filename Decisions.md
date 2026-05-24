@@ -236,6 +236,101 @@ not know about the internals of other modules.
 
 ---
 
+## llm.c: JSON response parsing — manual strstr, no library
+
+**Decision:** Parse the llama.cpp JSON response manually using `strstr`,
+not with cJSON or any other library.
+
+**Why:** The response structure is fixed and predictable:
+```json
+{"choices":[{"message":{"content":"answer here"}}]}
+```
+We only need one field (`content`). A full JSON parser for one field
+is over-engineering. `strstr` finds `"content":` and we walk from there.
+
+**Escaped quote handling:** We handle `\"` inside the content value
+by walking character by character — skipping `\"` pairs and stopping
+only at an unescaped `"`. A second pass unescapes `\"` → `"` in the
+result. Other escape sequences (`\\`, `\n`, `\t`) are left for later.
+
+---
+
+## llm.c: JSON request body — malloc exact size, not fixed buffer
+
+**Decision:** Build the JSON POST body with `malloc(strlen(context) + strlen(query) + 512)`
+rather than a fixed stack buffer.
+
+**Why:** Context size is unknown at compile time — it depends on how many
+chunks were retrieved and how long they are. A fixed buffer risks silent
+truncation. `malloc` exact size is always safe regardless of input length.
+The `+ 512` accounts for the fixed JSON scaffolding (keys, roles, etc.).
+
+**URL is different:** The llama.cpp endpoint URL is always short and
+predictable, so a fixed `char url[256]` with `snprintf` is safe there.
+
+---
+
+## llm.c: Growing response buffer — hand-rolled strbuf, not sds
+
+**Decision:** Accumulate libcurl response data into a hand-rolled `strbuf`
+struct (data + len + cap) rather than using antirez's `sds` library.
+
+**Why:** `sds` was not yet in `third_party/`. Rather than add a new
+dependency for one use case, a simple 3-field struct with `realloc`
+doubling achieves the same result in ~20 lines. Keeps the dependency
+count minimal.
+
+**Growth strategy:** Double capacity when full — avoids frequent `realloc`
+calls at the cost of at most 2x memory usage temporarily.
+
+---
+
+## llm.c: --server flag is optional in main.c
+
+**Decision:** The `--server` flag in `main.c` is optional, not required.
+
+**Why:** Without `--server`, the pipeline stops after retrieval and prints
+the top-k chunks. This is useful for testing retrieval quality without
+running the llama.cpp server. With `--server`, the full RAG pipeline
+runs: retrieve → generate → print answer.
+
+```
+no --query              → chunk, embed, print preview
+--query only            → retrieve, print top-k chunks
+--query + --server      → retrieve, generate, print answer
+```
+
+---
+
+## llm.c: Context string format — double newline between chunks
+
+**Decision:** When building the context string from top-k hits in `main.c`,
+separate chunks with three newlines (`\n\n\n`).
+
+**Why:** Three newlines gives TinyLlama a very clear visual boundary between
+separate chunks. More distinct than a double newline, without adding labels
+or extra scaffolding. Simpler than labeled `[1]`, `[2]` format.
+
+---
+
+## llm.c: Prompt template — explicit instruction (Option B)
+
+**Decision:** Use an explicit prompt template:
+```
+Use the following context to answer the question.
+Context:
+<context>
+
+Question: <query>
+Answer:
+```
+
+**Why:** Small models like TinyLlama (1.1B) benefit from explicit
+instructions. A vague prompt produces vague answers. Telling it exactly
+what to do ("use the following context", "Answer:") guides generation.
+
+---
+
 ## Platform: Apple M1
 
 All decisions assume M1 Mac:
