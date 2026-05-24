@@ -331,6 +331,28 @@ what to do ("use the following context", "Answer:") guides generation.
 
 ---
 
+## llm.c: flatten newlines instead of JSON escaping
+
+**Decision:** Replace `\n` characters with spaces in context and query
+strings before inserting them into the JSON body, using a `flatten()`
+helper. No full JSON escape logic.
+
+**Why:** JSON strings cannot contain raw newline characters. The correct
+fix is escaping (`\n` → `\\n`), but that adds complexity. Replacing with
+spaces is simpler, produces valid JSON, and has no meaningful impact on
+generation quality — TinyLlama does not rely on newlines to understand
+context.
+
+**What gets flattened:**
+- `context` — retrieved chunk texts joined together, contains many `\n`
+- `query` — user question, rarely has newlines, flattened harmlessly
+
+**What does NOT get flattened:**
+- Embeddings (`float[384]`) — never sent to the LLM, only used for
+  similarity comparison internally
+
+---
+
 ## main.c: building context string — two-pass malloc
 
 **Decision:** Build the context string from top-k chunks using two passes:
