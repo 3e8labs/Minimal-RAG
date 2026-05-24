@@ -1,0 +1,99 @@
+Command:
+./rag --model models/gte-small.gtemodel \
+      --file doc.txt \
+      --query "how do I make pasta?" \
+      --server http://localhost:8080
+
+Output:
+model:  models/gte-small.gtemodel
+file:   doc.txt
+bytes:  3116
+chunks: 4
+dim:    384
+query:  how do I make pasta?
+k:      3
+The Embeddings as follows
+--------------------------
+emb[0][0..5): -0.064847 0.001808 0.024432 -0.015457 -0.017024
+emb[1][0..5): -0.039862 0.019757 0.044674 -0.038014 0.021797
+
+Top 3 matches:
+1) score=0.7853 chunk=2
+ but too much overlap
+creates near-duplicates that can crowd out diverse results. In practice you tune chunk size,
+overlap, and top-k together.
+
+Section 8: More cooking details (keep together)
+For a simple tomato sauce, gently cook garlic in olive oil, add crushed tomatoes, and simmer until
+it thickens. For creamy sauces, emulsify fat and water: for example, stir pasta water into cheese
+and butter off the heat. Taste and adjust with salt and acid. For baking, weighing ingredients is
+more consistent than using measuring cups. Resting dough improves texture because flour hydrates
+and gluten relaxes.
+
+Section 9: Networking basics
+HTTP is a request-response protocol. A client sends a request with a method (GET/POST), headers,
+and optional body; a server returns a status code, headers, and a body. Latency dominates for small
+payloads, so batching work can help. In local RAG, we call an LLM server over HTTP to avoid linking
+against a C++ runtime.
+
+Section 10: Music and practice
+Practicing an
+
+2) score=0.7744 chunk=1
+ventions make programs easier to reason about.
+
+Section 5: Space and physics
+Light from distant stars takes years to reach Earth, so astronomy often looks back in time.
+Gravity shapes the motion of planets and the structure of galaxies, and small changes in
+initial conditions can lead to very different outcomes.
+
+Section 6: Gardening
+Healthy soil has good structure and holds moisture without becoming waterlogged. Compost adds
+organic matter and helps plants grow steadily. Some plants prefer full sun, while others thrive
+in partial shade, and paying attention to seasons can improve results.
+
+Section 7: Notes on retrieval
+When you build a RAG system, you want chunks to be small enough to retrieve precisely, but large
+enough to preserve context. Overlap helps avoid cutting a sentence in half, but too much overlap
+creates near-duplicates that can crowd out diverse results. In practice you tune chunk size,
+overlap, and top-k together.
+
+Section 8: More cooking details (keep together)
+For a s
+
+3) score=0.7560 chunk=0
+RAG in Pure C — sample document
+
+This is a small test document used to validate the chunking and embedding pipeline.
+It intentionally mixes a few topics so retrieval has something to separate.
+
+Section 1: Cats and dogs
+I love cats. Cats are curious, independent, and great companions.
+I also love dogs. Dogs are playful, loyal, and often enjoy long walks.
+
+Section 2: The stock market
+The stock market can be volatile. Prices move due to earnings, interest rates,
+and expectations about the future. Diversification helps manage risk.
+
+Section 3: Cooking
+When making pasta, salt the water generously and cook until al dente.
+Finish the pasta in the sauce so it absorbs flavor.
+
+Section 4: Computers
+In C, memory ownership matters. If a function allocates with malloc, the caller
+must free. Clear conventions make programs easier to reason about.
+
+Section 5: Space and physics
+Light from distant stars takes years to reach Earth, so astronomy often looks back in time.
+Gravity shapes the motion of pl
+
+Answer:
+To make pasta, salt the water generously and cook it until al dente (al dente means "tooth-like"
+or "fine" in Italian). Then, finish the pasta in the sauce so it absorbs the flavor. This technique
+is commonly used in C and is known as memory ownership. Conventions such as this make programming
+easier to understand and reason about.
+
+Notes:
+- CHUNK_SIZE=1000, CHUNK_OVERLAP=200
+- Chunks are large and mix multiple topics — causes LLM to hallucinate C/memory content in pasta answer
+- Smaller chunks would improve retrieval precision
