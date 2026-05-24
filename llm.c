@@ -107,9 +107,11 @@ char *llm_generate(llm_ctx *ctx, const char *query, const char *context) {
         "{"
         "\"model\":\"tinyllama\","
         "\"messages\":["
-        "{\"role\":\"system\",\"content\":\"You are a helpful assistant. Use the following context to answer the question.\"},"
+        "{\"role\":\"system\",\"content\":\"You are a helpful assistant. Use the following context to answer the question. If the context does not contain enough information, say you don't know.\"},"
         "{\"role\":\"user\",\"content\":\"Context:\\n%s\\n\\nQuestion: %s\\nAnswer:\"}"
-        "]}";
+        "],"
+        "\"stop\":[\"\\nQuestion:\",\"\\n\\n\"]"
+        "}";
 
     char *flat_context = flatten(context);
     char *flat_query   = flatten(query);

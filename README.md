@@ -47,39 +47,67 @@ llama-server -m ./models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf --port 8080
 
 ```bash
 # Build the executable
-cc -O3 -march=native -ffast-math \
-   main.c gte.c sds.c chunk.c embed.c store_v1.c llm.c \
-   -lm -lcurl -o rag
+make
 
-# Ingest a document
-./rag --model ./models/gte-small.gtemodel --file sample.txt
+# Embed a document and save to disk
+./rag --model ./models/gte-small.gtemodel --file doc.txt --save store.bin
 
-# Query the document
-./rag --model ./models/gte-small.gtemodel --file sample.txt --query "What is this about?" --k 3
+# Query the saved store
+./rag --model ./models/gte-small.gtemodel --load store.bin --query "What is this about?"
+
+# Or: embed and query in-memory (no disk store)
+./rag --model ./models/gte-small.gtemodel --file doc.txt --query "What is this about?"
 ```
 
 ## Usage
 
-### Ingestion
+v1 has three modes of operation:
+
+### Mode 1: Embed and save to disk
 
 ```bash
-./rag --model <path.gtemodel> --file <document.txt>
+./rag --model <path.gtemodel> --file <document.txt> --save <store.bin>
 ```
 
 - Reads the document
-- Splits it into overlapping chunks (1000 chars, 200 char overlap by default)
+- Splits it into overlapping chunks (1000 chars, 200 char overlap)
 - Embeds each chunk using GTE-Small
-- Stores chunks and embeddings in `store_v1.dat`
+- Writes chunks and embeddings to `<store.bin>` in the v1 binary format
 
-### Querying
+### Mode 2: Load from disk and query
 
 ```bash
-./rag --model <path.gtemodel> --file <document.txt> --query "your question here" --k 5
+./rag --model <path.gtemodel> --load <store.bin> --query "your question" [--k <int>] [--server <url>]
 ```
 
-- Embeds the query
-- Retrieves top-k most similar chunks (by cosine similarity)
-- Prints the results with scores
+- Loads the binary store from disk
+- Embeds the query using GTE-Small
+- Scans all stored chunks, scores each by cosine similarity
+- Prints the top-k matches (default k=3)
+- If `--server` is given, sends the top-k context to the LLM and prints the generated answer
+
+### Mode 3: In-memory (no disk store)
+
+```bash
+./rag --model <path.gtemodel> --file <document.txt> --query "your question" [--k <int>] [--server <url>]
+```
+
+- Same as Mode 2 but chunks and embeds the document in-memory — nothing is written to disk
+- Useful for one-off queries or testing
+
+### Flags
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--model <path>` | always | Path to the `.gtemodel` embedding model |
+| `--file <path>` | Mode 1, 3 | Document to chunk and embed |
+| `--save <path>` | Mode 1 | Write binary store to this file |
+| `--load <path>` | Mode 2 | Load binary store from this file |
+| `--query <text>` | Mode 2, 3 | Query string to search for |
+| `--k <int>` | optional | Number of top results to return (default: 3) |
+| `--server <url>` | optional | llama.cpp server URL for LLM generation (e.g. `http://localhost:8080`) |
+
+`--save` and `--load` are mutually exclusive.
 
 ## Project Structure
 
@@ -148,7 +176,8 @@ A custom binary format stores chunks and embeddings efficiently:
 
 ```
 [uint32 num_chunks]
-[chunk_0: uint32 text_len | char text[] | float embedding[384]]
+[uint32 dim]
+[chunk_0: uint32 text_len | uint8 text[text_len] | float embedding[dim]]
 [chunk_1: ...]
 ```
 
@@ -164,17 +193,21 @@ for (each chunk) {
 return top-k sorted by score
 ```
 
-## Compilation Flags
+## Compilation
 
-### Standard (Pure C, no frameworks)
+The `Makefile` handles everything:
+
 ```bash
-cc -O3 -march=native -ffast-math ...
+make        # build
+make clean  # remove objects and binary
 ```
+
+It compiles: `main.c chunk.c embed.c store_v1.c llm.c third_party/gte/gte.c`
+with flags: `-O3 -march=native -ffast-math -Wall -I third_party/gte`
 
 ### With Apple Accelerate (faster matrix ops)
-```bash
-cc -O3 -march=native -ffast-math -DUSE_BLAS -framework Accelerate ...
-```
+
+To enable BLAS-backed dot products, add `-DUSE_BLAS -framework Accelerate` to `CFLAGS` in the Makefile.
 
 ## Code Style
 
