@@ -1,0 +1,52 @@
+Command:
+./rag --model models/gte-small.gtemodel --file doc.txt \
+      --query "what is quantum computing?" --server http://localhost:8080
+
+Output:
+model:  models/gte-small.gtemodel
+file:   doc.txt
+bytes:  3116
+chunks: 4
+dim:    384
+query:  what is quantum computing?
+k:      3
+
+Top 3 matches:
+1) score=0.7689 chunk=3
+2) score=0.7629 chunk=0
+3) score=0.7524 chunk=2
+
+Answer:
+In a hypothetical scenario, "dy" is a device or system that performs quantum computing tasks.
+"Latency dominates for small payload" refers to a scenario where quantum computing is used for
+data transmission over long distances, such as in radio communication or satellite transfer.
+The section titled "Latency dominates for small payload" in the context of the text material
+is related to quantum computing.
+
+---
+
+Analysis:
+"quantum computing" does not exist in doc.txt. Two problems were exposed:
+
+PROBLEM 1 — No relevance threshold
+  Retrieval always returns top-k regardless of relevance. All three scores
+  (0.76, 0.76, 0.75) are similar — meaning nothing matched well, but the
+  system sent irrelevant context to the LLM anyway.
+
+  Fix: Add a minimum score threshold (e.g. 0.80). If no chunk scores above
+  the threshold, pass empty context or skip generation entirely.
+
+  Where to fix: retrieve_topk() in main.c — after scoring, count how many
+  hits are above the threshold. If zero, set out_context to NULL and skip
+  llm_generate().
+
+PROBLEM 2 — No "I don't know" instruction
+  The prompt tells TinyLlama to "use the following context to answer the
+  question" but does not tell it what to do when the context is irrelevant.
+  Small models like TinyLlama hallucinate when they have nothing real to say.
+
+  Fix: Update the system prompt in llm.c to add:
+  "If the context does not contain enough information to answer, say
+  'I don't know'."
+
+  Where to fix: the tmpl string in llm_generate() in llm.c.
