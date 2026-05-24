@@ -15,11 +15,17 @@ typedef struct {
     const char *file_path;
     const char *query;
     const char *server_url; /* optional: llama.cpp server e.g. http://localhost:8080 */
+    const char *save_path;  /* optional: write binary store to this path */
+    const char *load_path;  /* optional: load binary store from this path */
     int k; /* top-k for query mode */
 } args;
 
 static void usage(const char *prog) {
-    fprintf(stderr, "Usage: %s --model <path.gtemodel> --file <doc.txt> [--query <text>] [--k <int>] [--server <url>]\n", prog);
+    fprintf(stderr,
+        "Usage: %s --model <path.gtemodel> --file <doc.txt> [--query <text>] [--k <int>] [--server <url>]\n"
+        "       %s --model <path.gtemodel> --file <doc.txt> --save <store.bin>\n"
+        "       %s --load <store.bin> --model <path.gtemodel> --query <text> [--server <url>]\n",
+        prog, prog, prog);
 }
 
 /*
@@ -33,6 +39,8 @@ static int parse_args(args *a, int argc, char **argv) {
     a->file_path = NULL;
     a->query = NULL;
     a->server_url = NULL;
+    a->save_path = NULL;
+    a->load_path = NULL;
     a->k = 3; // Default k value set to 3
 
     for (int i = 1; i < argc; i++) {
@@ -40,8 +48,16 @@ static int parse_args(args *a, int argc, char **argv) {
         else if (!strcmp(argv[i], "--file") && i + 1 < argc) a->file_path = argv[++i];
         else if (!strcmp(argv[i], "--query") && i + 1 < argc) a->query = argv[++i];
         else if (!strcmp(argv[i], "--server") && i + 1 < argc) a->server_url = argv[++i];
+        else if (!strcmp(argv[i], "--save") && i + 1 < argc) a->save_path = argv[++i];
+        else if (!strcmp(argv[i], "--load") && i + 1 < argc) a->load_path = argv[++i];
         else if (!strcmp(argv[i], "--k") && i + 1 < argc) a->k = atoi(argv[++i]);
         else return -1;
+    }
+
+    /* --save and --load are mutually exclusive */
+    if (a->save_path && a->load_path) {
+        fprintf(stderr, "error: --save and --load cannot be used together\n");
+        return -1;
     }
 
     if (!a->model_path || !a->file_path) return -1;
