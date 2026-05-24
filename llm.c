@@ -9,6 +9,17 @@ struct llm_ctx {
     char *server_url;
 };
 
+/* Replace newlines with spaces so the string is safe to embed in JSON. */
+static char *flatten(const char *s) {
+    int len = strlen(s);
+    char *out = malloc(len + 1);
+    if (!out) return NULL;
+    for (int i = 0; i < len; i++)
+        out[i] = s[i] == '\n' ? ' ' : s[i];
+    out[len] = '\0';
+    return out;
+}
+
 /* Growing buffer to accumulate libcurl response data. */
 typedef struct {
     char  *data;  
@@ -100,13 +111,26 @@ char *llm_generate(llm_ctx *ctx, const char *query, const char *context) {
         "{\"role\":\"user\",\"content\":\"Context:\\n%s\\n\\nQuestion: %s\\nAnswer:\"}"
         "]}";
 
-    int body_len = strlen(context) + strlen(query) + 512; // 512 is for template.
+    char *flat_context = flatten(context);
+    char *flat_query   = flatten(query);
+    if (!flat_context || !flat_query) {
+        fprintf(stderr, "llm_generate: out of memory\n");
+        free(flat_context);
+        free(flat_query);
+        return NULL;
+    }
+
+    int body_len = strlen(flat_context) + strlen(flat_query) + 512;
     char *body = malloc(body_len + 1);
     if (!body) {
         fprintf(stderr, "llm_generate: out of memory\n");
+        free(flat_context);
+        free(flat_query);
         return NULL;
     }
-    snprintf(body, body_len + 1, tmpl, context, query);
+    snprintf(body, body_len + 1, tmpl, flat_context, flat_query);
+    free(flat_context);
+    free(flat_query);
 
     /* ----------------------------------------------------------------
      * Set up libcurl and perform the HTTP POST.
