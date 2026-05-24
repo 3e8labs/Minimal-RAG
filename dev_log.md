@@ -44,6 +44,10 @@ These are fundamental RAG quality issues, not bugs. They apply to all versions:
 - Fix 1: minimum score threshold before calling llm_generate
 - Fix 2: update system prompt to include "if context is insufficient, say I don't know"
 
+
+- Update : Fixed the "I don't know" part.
+
+
 ## Testing — sample_outputs/v1/3
 
 Query: "what are dogs like?" (exists in document)
@@ -64,4 +68,8 @@ What went wrong:
   This tells llama.cpp to stop generating as soon as it sees those tokens.
 
   Where to fix: llm_generate() in llm.c — add "stop" array to the JSON body.
+
+
+- Update : Also added "stop" part to JSON content so the LLM does not hallucinate with Q/A questions of its own.
+
 
