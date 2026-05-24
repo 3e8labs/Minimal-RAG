@@ -13,11 +13,12 @@ typedef struct {
     const char *model_path;
     const char *file_path;
     const char *query;
+    const char *server_url; /* optional: llama.cpp server e.g. http://localhost:8080 */
     int k; /* top-k for query mode */
 } args;
 
 static void usage(const char *prog) {
-    fprintf(stderr, "Usage: %s --model <path.gtemodel> --file <doc.txt> [--query <text>] [--k <int>]\n", prog);
+    fprintf(stderr, "Usage: %s --model <path.gtemodel> --file <doc.txt> [--query <text>] [--k <int>] [--server <url>]\n", prog);
 }
 
 /*
@@ -30,12 +31,14 @@ static int parse_args(args *a, int argc, char **argv) {
     a->model_path = NULL;
     a->file_path = NULL;
     a->query = NULL;
+    a->server_url = NULL;
     a->k = 3; // Default k value set to 3
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--model") && i + 1 < argc) a->model_path = argv[++i];
         else if (!strcmp(argv[i], "--file") && i + 1 < argc) a->file_path = argv[++i];
         else if (!strcmp(argv[i], "--query") && i + 1 < argc) a->query = argv[++i];
+        else if (!strcmp(argv[i], "--server") && i + 1 < argc) a->server_url = argv[++i];
         else if (!strcmp(argv[i], "--k") && i + 1 < argc) a->k = atoi(argv[++i]);
         else return -1;
     }
