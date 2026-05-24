@@ -5,6 +5,7 @@
 #include "chunk.h"
 #include "embed.h"
 #include "llm.h"
+#include "store_v1.h"
 
 /* Chunking parameters for this smoke-test CLI (character/byte based). */
 #define CHUNK_SIZE 1000
@@ -60,6 +61,11 @@ static int parse_args(args *a, int argc, char **argv) {
         return -1;
     }
 
+    /* --load mode only needs model + query (no file) */
+    if (a->load_path) {
+        if (!a->model_path || !a->query) return -1;
+        return 0;
+    }
     if (!a->model_path || !a->file_path) return -1;
     if (a->k <= 0) return -1;
     return 0;
@@ -200,6 +206,21 @@ static int retrieve_topk(embed_ctx *ectx,
     return 0;
 }
 
+/* Generate an answer using the LLM server if --server was given, and print it. */
+static void generate_and_print(const char *server_url, const char *query, const char *context) {
+    if (!server_url || !context) return;
+    llm_ctx *lctx = llm_load(server_url);
+    if (!lctx) { fprintf(stderr, "error: llm_load failed\n"); return; }
+    char *answer = llm_generate(lctx, query, context);
+    if (!answer) {
+        fprintf(stderr, "error: llm_generate failed\n");
+    } else {
+        printf("\nAnswer:\n%s\n", answer);
+        free(answer);
+    }
+    llm_free(lctx);
+}
+
 int main(int argc, char **argv) {
     /* --------------------------------------------------------------------
      * Parse flags.
@@ -212,66 +233,133 @@ int main(int argc, char **argv) {
     }
 
     /* --------------------------------------------------------------------
-     * Read input document.
+     * Load embedding model (needed in all modes).
+     * -------------------------------------------------------------------- */
+    embed_ctx *ectx = embed_load(a.model_path);
+    if (!ectx) {
+        fprintf(stderr, "error: embed_load failed (model: %s)\n", a.model_path);
+        return 1;
+    }
+    int dim = embed_dim(ectx);
+
+    /* ====================================================================
+     * MODE 2: --load + --query
+     * Embed the query, scan the binary store, build context, generate.
+     * ==================================================================== */
+    if (a.load_path) {
+        const char *qtexts[1] = { a.query };
+        float *qemb = embed_batch(ectx, qtexts, 1);
+        if (!qemb) {
+            fprintf(stderr, "error: embed_batch failed for query\n");
+            embed_free(ectx);
+            return 1;
+        }
+
+        store_v1_hit *hits = NULL;
+        int hit_count = 0;
+        if (store_v1_query_topk(a.load_path, qemb, dim, a.k, &hits, &hit_count) != 0) {
+            fprintf(stderr, "error: store_v1_query_topk failed\n");
+            free(qemb);
+            embed_free(ectx);
+            return 1;
+        }
+        free(qemb);
+
+        printf("query:  %s\nk:      %d\nstore:  %s\n\n", a.query, a.k, a.load_path);
+        printf("Top %d matches:\n", hit_count);
+        for (int i = 0; i < hit_count; i++) {
+            printf("%d) score=%.4f chunk=%d\n%s\n\n",
+                   i + 1, hits[i].score, hits[i].index, hits[i].text);
+        }
+
+        /* Build context string from hits (two-pass: measure then fill). */
+        size_t total = 1;
+        for (int i = 0; i < hit_count; i++) {
+            total += strlen(hits[i].text);
+            if (i < hit_count - 1) total += 3; /* "\n\n\n" */
+        }
+        char *context = malloc(total);
+        if (context) {
+            context[0] = '\0';
+            for (int i = 0; i < hit_count; i++) {
+                strcat(context, hits[i].text);
+                if (i < hit_count - 1) strcat(context, "\n\n\n");
+            }
+        }
+
+        generate_and_print(a.server_url, a.query, context);
+
+        free(context);
+        store_v1_free_hits(hits, hit_count);
+        embed_free(ectx);
+        return 0;
+    }
+
+    /* --------------------------------------------------------------------
+     * Modes 1 and 3 both need the document chunked and embedded.
      * -------------------------------------------------------------------- */
     long file_len = 0;
     char *text = read_entire_file(a.file_path, &file_len);
     if (!text) {
         fprintf(stderr, "error: failed to read file: %s\n", a.file_path);
+        embed_free(ectx);
         return 1;
     }
 
-    /* --------------------------------------------------------------------
-     * Chunk document into overlapping windows.
-     * -------------------------------------------------------------------- */
     int num_chunks = 0;
     char **chunks = chunk_text(text, CHUNK_SIZE, CHUNK_OVERLAP, &num_chunks);
     if (!chunks) {
         fprintf(stderr, "error: chunk_text failed\n");
         free(text);
-        return 1;
-    }
-
-    /* --------------------------------------------------------------------
-     * Load the embedding model and embed all chunks in a single batch.
-     * -------------------------------------------------------------------- */
-    embed_ctx *ectx = embed_load(a.model_path);
-    if (!ectx) {
-        fprintf(stderr, "error: embed_load failed (model: %s)\n", a.model_path);
-        chunk_free(chunks, num_chunks);
-        free(text);
+        embed_free(ectx);
         return 1;
     }
 
     float *emb = embed_batch(ectx, (const char **)chunks, num_chunks);
     if (!emb) {
         fprintf(stderr, "error: embed_batch failed\n");
-        embed_free(ectx);
         chunk_free(chunks, num_chunks);
         free(text);
+        embed_free(ectx);
         return 1;
     }
 
-    /* --------------------------------------------------------------------
-     * Print a small preview so we can sanity-check the embedding layout.
-     * -------------------------------------------------------------------- */
-    int dim = embed_dim(ectx);
     printf("model:  %s\nfile:   %s\nbytes:  %ld\n", a.model_path, a.file_path, file_len);
     printf("chunks: %d\ndim:    %d\n", num_chunks, dim);
-    if (a.query) {
-        printf("query:  %s\nk:      %d\n", a.query, a.k);
+
+    /* ====================================================================
+     * MODE 1: --file + --save
+     * Write binary store to disk, then exit.
+     * ==================================================================== */
+    if (a.save_path) {
+        if (store_v1_write(a.save_path, chunks, num_chunks, emb, dim) != 0) {
+            fprintf(stderr, "error: store_v1_write failed\n");
+            free(emb);
+            chunk_free(chunks, num_chunks);
+            free(text);
+            embed_free(ectx);
+            return 1;
+        }
+        printf("store:  %s (written)\n", a.save_path);
+        free(emb);
+        chunk_free(chunks, num_chunks);
+        free(text);
+        embed_free(ectx);
+        return 0;
     }
 
-    int nprint = dim < 5 ? dim : 5;
-    printf("The Embeddings as follows\n");
-    printf("--------------------------\n");
-    if (num_chunks > 0) print_embedding_preview(emb, 0, dim, nprint);
-    if (num_chunks > 1) print_embedding_preview(emb, 1, dim, nprint);
-
-    /* --------------------------------------------------------------------
-     * Optional retrieval mode: embed the query and brute-force top-k chunks.
-     * -------------------------------------------------------------------- */
+    /* ====================================================================
+     * MODE 3: --file + --query (in-memory, no disk store)
+     * ==================================================================== */
     if (a.query) {
+        printf("query:  %s\nk:      %d\n", a.query, a.k);
+
+        int nprint = dim < 5 ? dim : 5;
+        printf("The Embeddings as follows\n");
+        printf("--------------------------\n");
+        if (num_chunks > 0) print_embedding_preview(emb, 0, dim, nprint);
+        if (num_chunks > 1) print_embedding_preview(emb, 1, dim, nprint);
+
         char *context = NULL;
         if (retrieve_topk(ectx, a.query, a.k, emb, num_chunks, dim, chunks, &context) != 0) {
             fprintf(stderr, "error: retrieval failed\n");
@@ -282,25 +370,7 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        /* ----------------------------------------------------------------
-         * Optional generation: if --server was given, call llm_generate.
-         * ---------------------------------------------------------------- */
-        if (a.server_url && context) {
-            llm_ctx *lctx = llm_load(a.server_url);
-            if (!lctx) {
-                fprintf(stderr, "error: llm_load failed\n");
-            } else {
-                char *answer = llm_generate(lctx, a.query, context);
-                if (!answer) {
-                    fprintf(stderr, "error: llm_generate failed\n");
-                } else {
-                    printf("\nAnswer:\n%s\n", answer);
-                    free(answer);
-                }
-                llm_free(lctx);
-            }
-        }
-
+        generate_and_print(a.server_url, a.query, context);
         free(context);
     }
 
