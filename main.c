@@ -4,6 +4,7 @@
 
 #include "chunk.h"
 #include "embed.h"
+#include "llm.h"
 
 /* Chunking parameters for this smoke-test CLI (character/byte based). */
 #define CHUNK_SIZE 1000
@@ -105,7 +106,8 @@ static int retrieve_topk(embed_ctx *ectx,
                          const float *chunk_emb,
                          int num_chunks,
                          int dim,
-                         char **chunks) {
+                         char **chunks,
+                         char **out_context) {
     if (!ectx || !query || !chunk_emb || !chunks) return -1;
     if (num_chunks <= 0 || dim <= 0) return -1;
 
@@ -148,6 +150,32 @@ static int retrieve_topk(embed_ctx *ectx,
         if (best_idx[r] < 0) continue;
         printf("%d) score=%.4f chunk=%d\n%s\n\n",
                r + 1, best_score[r], best_idx[r], chunks[best_idx[r]]);
+    }
+
+    /* ----------------------------------------------------------------
+     * Build context string from top-k chunks for LLM generation.
+     * Two passes: first measure, then fill.
+     * ---------------------------------------------------------------- */
+    if (out_context) {
+        /* Pass 1 — measure total size needed */
+        size_t total = 1; /* for \0 */
+        for (int r = 0; r < kk; r++) {
+            if (best_idx[r] < 0) continue;
+            total += strlen(chunks[best_idx[r]]);
+            if (r < kk - 1) total += 3; /* "\n\n\n" separator */
+        }
+
+        char *context = malloc(total);
+        if (context) {
+            /* Pass 2 — fill */
+            context[0] = '\0';
+            for (int r = 0; r < kk; r++) {
+                if (best_idx[r] < 0) continue;
+                strcat(context, chunks[best_idx[r]]);
+                if (r < kk - 1) strcat(context, "\n\n\n");
+            }
+        }
+        *out_context = context;
     }
 
     free(best_idx);
@@ -228,7 +256,8 @@ int main(int argc, char **argv) {
      * Optional retrieval mode: embed the query and brute-force top-k chunks.
      * -------------------------------------------------------------------- */
     if (a.query) {
-        if (retrieve_topk(ectx, a.query, a.k, emb, num_chunks, dim, chunks) != 0) {
+        char *context = NULL;
+        if (retrieve_topk(ectx, a.query, a.k, emb, num_chunks, dim, chunks, &context) != 0) {
             fprintf(stderr, "error: retrieval failed\n");
             free(emb);
             embed_free(ectx);
@@ -236,6 +265,27 @@ int main(int argc, char **argv) {
             free(text);
             return 1;
         }
+
+        /* ----------------------------------------------------------------
+         * Optional generation: if --server was given, call llm_generate.
+         * ---------------------------------------------------------------- */
+        if (a.server_url && context) {
+            llm_ctx *lctx = llm_load(a.server_url);
+            if (!lctx) {
+                fprintf(stderr, "error: llm_load failed\n");
+            } else {
+                char *answer = llm_generate(lctx, a.query, context);
+                if (!answer) {
+                    fprintf(stderr, "error: llm_generate failed\n");
+                } else {
+                    printf("\nAnswer:\n%s\n", answer);
+                    free(answer);
+                }
+                llm_free(lctx);
+            }
+        }
+
+        free(context);
     }
 
     /* --------------------------------------------------------------------
