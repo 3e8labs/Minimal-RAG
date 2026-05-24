@@ -331,6 +331,21 @@ what to do ("use the following context", "Answer:") guides generation.
 
 ---
 
+## main.c: building context string — two-pass malloc
+
+**Decision:** Build the context string from top-k chunks using two passes:
+1. First pass — sum `strlen` of each chunk + separators to get exact size
+2. `malloc` exactly that size
+3. Second pass — copy chunks in, placing `"\n\n\n"` between them
+
+**Why:** Chunk lengths are unknown at compile time — they depend on the
+document and chunking parameters. A fixed buffer risks truncation. Two
+passes give us exact size with no waste and no risk.
+
+This is a standard C pattern for building strings of unknown length.
+
+---
+
 ## Platform: Apple M1
 
 All decisions assume M1 Mac:
