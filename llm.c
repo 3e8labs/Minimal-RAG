@@ -11,20 +11,26 @@ struct llm_ctx {
 
 /* Growing buffer to accumulate libcurl response data. */
 typedef struct {
-    char  *data;
-    size_t len;
-    size_t cap;
+    char  *data;  
+    size_t len; 
+    size_t cap; 
 } strbuf;
 
 /* libcurl calls this each time response bytes arrive.
  * We append to strbuf, doubling capacity when needed. */
 static size_t on_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
-    size_t bytes = size * nmemb;
-    strbuf *buf = userdata;
+/* Input function set from the curl easy option CURLOPT_WRITEFUNCTION 
+ * Outputs no.of bytes that are recieved. If nmemb != return value of callback func , signals libcurl that there is an error.
+ * size is always 1.
+ * Refer `https://curl.se/libcurl/c/CURLOPT_WRITEFUNCTION.html`
+*/
+  
+    size_t bytes = size * nmemb; 
+    strbuf *buf = (strbuf*)userdata; // First append the userdata to buf.
 
     /* Grow if needed */
     if (buf->len + bytes + 1 > buf->cap) {
-        size_t new_cap = buf->cap == 0 ? 1024 : buf->cap * 2;
+        size_t new_cap = buf->cap == 0 ? 1024 : buf->cap * 2; // 1024 is the default capacity, otherwise double it.
         while (new_cap < buf->len + bytes + 1) new_cap *= 2;
         char *new_data = realloc(buf->data, new_cap);
         if (!new_data) return 0; /* returning 0 signals error to libcurl */
@@ -120,7 +126,8 @@ char *llm_generate(llm_ctx *ctx, const char *query, const char *context) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_data); // Callback function
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, on_data); 
+    // Callback function set through setopt CURLOPT_WRITEFUNCTION
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response); 
 
     CURLcode res = curl_easy_perform(curl); // Actual Network response
